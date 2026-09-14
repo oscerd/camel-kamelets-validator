@@ -36,6 +36,8 @@ spec:
       Ceph pushes bucket notifications to an endpoint configured on the topic; this Kamelet consumes the Kafka flavour of that. Configuring the notification and the topic on the Ceph side is done out of band with the S3 and topic APIs, not by this Kamelet.
 
       Set getObject to true to fetch the object body from Ceph for ObjectCreated events. The notification JSON is emitted unchanged otherwise.
+
+      The Ceph extension fields are surfaced as headers: ceph-event-id, ceph-opaque-data, ceph-object-metadata and ceph-object-tags, each with a ce- prefixed CloudEvents counterpart. The topic is expected to carry only Ceph notifications; a message without a Records array fails the exchange rather than being passed through.
     required:
       - topic
       - bootstrapServers
@@ -127,6 +129,36 @@ spec:
         saslUsername: "{{?saslUsername}}"
         saslPassword: "{{?saslPassword}}"
       steps:
+        # Ceph extension fields, surfaced as headers so a consumer does not have
+        # to re-parse the body for them. Named the way the catalog names source
+        # output headers -- a plain form plus a CloudEvents one, as
+        # infinispan-source and ftp-source do -- rather than leaking the JSON
+        # paths. s3.bucket.id is deliberately not surfaced: it is an internal
+        # Ceph id useful only for debugging.
+        - setHeader:
+            name: ceph-event-id
+            jsonpath: $.Records[0].eventId
+        - setHeader:
+            name: ce-cepheventid
+            simple: "${header[ceph-event-id]}"
+        - setHeader:
+            name: ceph-opaque-data
+            jsonpath: $.Records[0].opaqueData
+        - setHeader:
+            name: ce-cephopaquedata
+            simple: "${header[ceph-opaque-data]}"
+        - setHeader:
+            name: ceph-object-metadata
+            jsonpath: $.Records[0].s3.object.metadata
+        - setHeader:
+            name: ce-cephobjectmetadata
+            simple: "${header[ceph-object-metadata]}"
+        - setHeader:
+            name: ceph-object-tags
+            jsonpath: $.Records[0].s3.object.tags
+        - setHeader:
+            name: ce-cephobjecttags
+            simple: "${header[ceph-object-tags]}"
         # Ceph emits the classic S3 notification envelope -- a Records array --
         # not the EventBridge shape that aws-s3-event-based-source parses, so the
         # paths below are Records based on purpose.
